@@ -1,17 +1,14 @@
-// app.js
 import { SmartCubeBluetooth } from './bluetooth.js';
 import { Cube3D } from './cubeLogic.js';
 
-window.addEventListener('DOMContentLoaded', () => {
-    console.log('DOM ready, initializing Smart Cube Trainer...');
+function initApp() {
+    console.log('Initializing Smart Cube Trainer...');
 
     const cube3D = new Cube3D();
-
-    // Tìm nút bấm hỗ trợ cả 2 ID 'btn-connect' và 'connectBtn'
     const connectBtn = document.getElementById('btn-connect') || document.getElementById('connectBtn');
 
     if (!connectBtn) {
-        console.error('❌ Không tìm thấy nút Connect trong index.html! Hãy kiểm tra thẻ <button>');
+        console.error('❌ Không tìm thấy nút Connect trong index.html!');
         return;
     }
 
@@ -52,4 +49,11 @@ window.addEventListener('DOMContentLoaded', () => {
     });
 
     handleDisconnect();
-});
+}
+
+// Tự động kiểm tra trạng thái DOM để khởi tạo ngay lập tức
+if (document.readyState === 'loading') {
+    window.addEventListener('DOMContentLoaded', initApp);
+} else {
+    initApp();
+}
