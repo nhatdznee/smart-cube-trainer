@@ -11,6 +11,9 @@ export class SmartCubeBluetooth {
         // Địa chỉ MAC khối GAN iCarry
         this.macAddress = '0C:3D:5E:99:23:29';
         this.ganKey = this.deriveGanKey(this.macAddress);
+
+        // Chuẩn Service UUID mới của GAN iCarry
+        this.GAN_SERVICE_UUID = '0000fe59-0000-1000-8000-00805f9b34fb';
     }
 
     deriveGanKey(mac) {
@@ -38,6 +41,7 @@ export class SmartCubeBluetooth {
                     { namePrefix: 'AiCube' }
                 ],
                 optionalServices: [
+                    '0000fe59-0000-1000-8000-00805f9b34fb',
                     '0000fff0-0000-1000-8000-00805f9b34fb',
                     '0000aaaa-0000-1000-8000-00805f9b34fb',
                     '0000ffe0-0000-1000-8000-00805f9b34fb',
@@ -56,9 +60,9 @@ export class SmartCubeBluetooth {
 
             console.log('3. Đang quét danh sách Primary Services...');
             const services = await this.server.getPrimaryServices();
-            console.log('📋 Tất cả Services tìm thấy:', services.map(s => s.uuid));
+            console.log('📋 tất cả Services tìm thấy:', services.map(s => s.uuid));
 
-            // BỎ QUA các Service mặc định của hệ thống Bluetooth (1800, 1801)
+            // Bỏ qua service hệ thống 1800, 1801
             const validServices = services.filter(s => 
                 !s.uuid.includes('00001800') && !s.uuid.includes('00001801')
             );
@@ -67,25 +71,22 @@ export class SmartCubeBluetooth {
                 throw new Error('Không tìm thấy Service dữ liệu nào trên khối GAN!');
             }
 
-            // Chọn Service dữ liệu chuẩn của GAN
+            // Ưu tiên fe59, sau đó đến các service khác
             const service = validServices.find(s => 
+                s.uuid.includes('fe59') || 
                 s.uuid.includes('fff0') || 
-                s.uuid.includes('aaaa') || 
-                s.uuid.includes('6e400001')
+                s.uuid.includes('aaaa')
             ) || validServices[0];
 
-            console.log(`🎯 Đã chọn Service dữ liệu chính xác: ${service.uuid}`);
+            console.log(`🎯 Đã chọn Service: ${service.uuid}`);
 
             const characteristics = await service.getCharacteristics();
             console.log('📋 Danh sách Characteristics:', characteristics.map(c => c.uuid));
 
-            // Ưu tiên chọn Characteristic có tính năng notify và chứa mã fff5
-            this.notifyCharacteristic = characteristics.find(c => 
-                (c.uuid.includes('fff5') || c.uuid.includes('6e400003')) && c.properties.notify
-            ) || characteristics.find(c => c.properties.notify);
-
+            // Tìm kênh notify nhận bước xoay
+            this.notifyCharacteristic = characteristics.find(c => c.properties.notify);
             this.writeCharacteristic = characteristics.find(c => 
-                c.uuid.includes('fff2') || c.properties.write || c.properties.writeWithoutResponse
+                c.properties.write || c.properties.writeWithoutResponse
             );
 
             if (!this.notifyCharacteristic) {
@@ -96,7 +97,7 @@ export class SmartCubeBluetooth {
             await this.notifyCharacteristic.startNotifications();
             this.notifyCharacteristic.addEventListener('characteristicvaluechanged', this.handleData.bind(this));
 
-            // 5. Gửi gói Handshake ping
+            // 5. Gửi Handshake ping nếu có kênh Write
             if (this.writeCharacteristic) {
                 try {
                     const handshakePacket = new Uint8Array([0x68, 0x01, 0x00, 0x00, 0x00, 0x00]);
