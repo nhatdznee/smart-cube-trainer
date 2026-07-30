@@ -1,38 +1,41 @@
+// app.js
 import { SmartCubeBluetooth } from './bluetooth.js';
 import { Cube3D } from './cubeLogic.js';
 
-// Khởi tạo 3D Rubik
-const cube3D = new Cube3D();
+window.addEventListener('DOMContentLoaded', () => {
+    console.log('DOM ready, initializing Smart Cube Trainer...');
 
-// Xử lý khi có bước xoay Real-time từ khối Rubik thật
-function handleRealtimeMove(move) {
-    console.log('Xoay real-time:', move);
-    if (cube3D && typeof cube3D.applyMove === 'function') {
-        cube3D.applyMove(move);
-    }
-}
+    const cube3D = new Cube3D();
 
-// Xử lý khi ngắt kết nối hoặc chưa kết nối
-function handleDisconnect() {
-    console.log('Trạng thái: Chưa/Ngắt kết nối -> Reset Rubik 3D về mặc định');
-    if (cube3D && typeof cube3D.resetToSolved === 'function') {
-        cube3D.resetToSolved();
+    function handleRealtimeMove(move) {
+        console.log('Realtime move:', move);
+        if (cube3D && typeof cube3D.applyMove === 'function') {
+            cube3D.applyMove(move);
+        }
     }
 
+    function handleDisconnect() {
+        console.log('Disconnected -> Reset Rubik 3D');
+        if (cube3D && typeof cube3D.resetToSolved === 'function') {
+            cube3D.resetToSolved();
+        }
+        const connectBtn = document.getElementById('connectBtn');
+        if (connectBtn) {
+            connectBtn.textContent = '🔌 Connect Cube';
+            connectBtn.classList.remove('connected');
+        }
+    }
+
+    const bluetooth = new SmartCubeBluetooth(handleRealtimeMove, handleDisconnect);
     const connectBtn = document.getElementById('connectBtn');
-    if (connectBtn) {
-        connectBtn.textContent = '🔌 Connect Cube';
-        connectBtn.classList.remove('connected');
+
+    if (!connectBtn) {
+        console.error('Không tìm thấy nút id="connectBtn" trong index.html!');
+        return;
     }
-}
 
-// Khởi tạo đối tượng Bluetooth
-const bluetooth = new SmartCubeBluetooth(handleRealtimeMove, handleDisconnect);
-
-// Gán sự kiện cho nút Connect / Disconnect
-const connectBtn = document.getElementById('connectBtn');
-if (connectBtn) {
     connectBtn.addEventListener('click', async () => {
+        console.log('Bấm nút Connect Cube...');
         if (bluetooth.device && bluetooth.device.gatt && bluetooth.device.gatt.connected) {
             bluetooth.disconnect();
         } else {
@@ -46,7 +49,6 @@ if (connectBtn) {
             }
         }
     });
-}
 
-// Trạng thái ban đầu khi chưa bấm kết nối
-handleDisconnect();
+    handleDisconnect();
+});
