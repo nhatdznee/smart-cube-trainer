@@ -75,7 +75,8 @@ export class SmartCubeBluetooth {
             }
 
             if (!service) {
-                alert('Không tìm thấy Service của GAN Cube!');
+                alert('Không tìm thấy Service của GAN Cube!\nLý do: Rubik đang bị ghép nối trong Cài đặt Bluetooth Laptop. Hãy Xóa/Remove thiết bị khỏi Cài đặt Laptop rồi thử lại.');
+                this.disconnect(); // Ngắt kết nối sạch sẽ khi báo lỗi
                 return false;
             }
 
@@ -87,6 +88,7 @@ export class SmartCubeBluetooth {
 
             if (!this.characteristic) {
                 alert('Không thể kết nối kênh dữ liệu GAN Cube!');
+                this.disconnect(); // Ngắt kết nối sạch sẽ khi báo lỗi
                 return false;
             }
 
@@ -99,6 +101,7 @@ export class SmartCubeBluetooth {
 
         } catch (error) {
             console.error('Lỗi kết nối Bluetooth:', error);
+            this.disconnect(); // Ngắt kết nối khi catch bất kỳ lỗi nào
             if (error.name !== 'NotFoundError') {
                 alert('Lỗi Bluetooth: ' + error.message);
             }
@@ -106,6 +109,7 @@ export class SmartCubeBluetooth {
         }
     }
 
+    // Hàm chủ động và tự động ngắt kết nối
     disconnect() {
         if (this.device && this.device.gatt && this.device.gatt.connected) {
             this.device.gatt.disconnect();
@@ -114,6 +118,7 @@ export class SmartCubeBluetooth {
         this.device = null;
         this.server = null;
         this.characteristic = null;
+        if (this.onDisconnect) this.onDisconnect();
     }
 
     handleData(event) {
