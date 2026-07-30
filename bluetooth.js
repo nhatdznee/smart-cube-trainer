@@ -8,6 +8,7 @@ export class SmartCubeBluetooth {
         this.onMove = onMoveCallback;
         this.onDisconnect = onDisconnectCallback;
 
+        // Địa chỉ MAC khối GAN iCarry
         this.macAddress = '0C:3D:5E:99:23:29';
         this.ganKey = this.deriveGanKey(this.macAddress);
 
@@ -33,6 +34,7 @@ export class SmartCubeBluetooth {
         }
 
         try {
+            console.log('1. Mở hộp thoại quét thiết bị...');
             this.device = await navigator.bluetooth.requestDevice({
                 filters: [
                     { namePrefix: 'GAN' },
@@ -46,51 +48,54 @@ export class SmartCubeBluetooth {
                 ]
             });
 
-            // Tự động nhận biết khi Rubik bị tắt nguồn hoặc mất kết nối
-            this.device.addEventListener('gattserverdisconnected', () => {
-                console.warn('⚠️ Mất kết nối Bluetooth với Rubik!');
-                this.disconnect();
-            });
+            console.log(`2. Đã ghép nối với: ${this.device.name}. Đang kết nối GATT...`);
+            this.server = await this.device.gatt.connect();
 
-            console.log(`Đang kết nối GATT tới: ${this.device.name}`);
-
-            let retries = 3;
-            while (retries > 0) {
-                try {
-                    this.server = await this.device.gatt.connect();
-                    await new Promise(r => setTimeout(r, 600));
-                    if (this.server && this.server.connected) break;
-                } catch (err) {
-                    retries--;
-                    if (retries === 0) throw err;
-                    await new Promise(r => setTimeout(r, 500));
-                }
-            }
+            await new Promise(r => setTimeout(r, 500));
 
             if (!this.server || !this.server.connected) {
-                throw new Error('Không thể kết nối GATT Server!');
+                throw new Error('GATT Server ngắt kết nối đột ngột!');
             }
 
+            console.log('3. Lấy Primary Service fff0...');
             const service = await this.server.getPrimaryService(this.SERVICE_UUID);
+
+            console.log('4. Lấy Notify Characteristic fff5...');
             this.notifyCharacteristic = await service.getCharacteristic(this.NOTIFY_UUID);
 
             try {
                 this.writeCharacteristic = await service.getCharacteristic(this.WRITE_UUID);
-            } catch (e) {}
+                console.log('Đã tìm thấy kênh Write fff2');
+            } catch (e) {
+                console.warn('Không tìm thấy kênh Write fff2, tiếp tục chế độ Read.');
+            }
 
+            console.log('5. Kích hoạt Notifications...');
             await this.notifyCharacteristic.startNotifications();
             this.notifyCharacteristic.addEventListener('characteristicvaluechanged', this.handleData.bind(this));
 
+            // 6. Gửi gói Handshake (bọc an toàn không gây ngắt kết nối nếu lỗi ghi)
             if (this.writeCharacteristic) {
-                const handshakePacket = new Uint8Array([0x68, 0x01, 0x00, 0x00, 0x00, 0x00]);
-                await this.writeCharacteristic.writeValue(handshakePacket);
+                try {
+                    const handshakePacket = new Uint8Array([0x68, 0x01, 0x00, 0x00, 0x00, 0x00]);
+                    if (typeof this.writeCharacteristic.writeValueWithoutResponse === 'function') {
+                        await this.writeCharacteristic.writeValueWithoutResponse(handshakePacket);
+                    } else if (typeof this.writeCharacteristic.writeValueWithResponse === 'function') {
+                        await this.writeCharacteristic.writeValueWithResponse(handshakePacket);
+                    } else if (typeof this.writeCharacteristic.writeValue === 'function') {
+                        await this.writeCharacteristic.writeValue(handshakePacket);
+                    }
+                    console.log('🤝 Handshake thành công!');
+                } catch (writeErr) {
+                    console.warn('Cảnh báo Lỗi Write Handshake (không ảnh hưởng luồng chính):', writeErr);
+                }
             }
 
-            console.log('✅ Đã kết nối GAN iCarry thành công!');
+            console.log('✅ WEB ĐÃ NHẬN DIỆN KẾT NỐI THÀNH CÔNG!');
             return true;
 
         } catch (error) {
-            console.error('Lỗi Bluetooth:', error);
+            console.error('❌ Lỗi chi tiết Bluetooth Connect:', error);
             if (error.name !== 'NotFoundError') {
                 alert(`Lỗi kết nối Bluetooth: ${error.message}`);
             }
@@ -129,6 +134,7 @@ export class SmartCubeBluetooth {
             let wcaMove = faces[faceIndex];
             if (direction === 1) wcaMove += "'";
 
+            console.log(`🎯 Realtime Move: ${wcaMove}`);
             if (this.onMove) this.onMove(wcaMove);
         }
     }
