@@ -1,8 +1,6 @@
 // app.js
 import { SmartCubeBluetooth } from './bluetooth.js';
 import { CubeTracker } from './cubeLogic.js';
-
-// Sử dụng gói ESM CDN ổn định cho Scrambler
 import { randomScrambleForEvent } from 'https://cdn.jsdelivr.net/npm/cubing@0.27.0/scramble/+esm';
 
 const ui = {
@@ -25,41 +23,17 @@ const ui = {
 };
 
 let tracker = new CubeTracker();
+let isConnectedState = false;
 
-// 1. Tạo chuỗi Scramble WCA
-async function generateScramble() {
-    try {
-        ui.scrambleText.innerText = "Generating scramble...";
-        const scramble = await randomScrambleForEvent("333");
-        const scrambleStr = scramble.toString();
-        ui.scrambleText.innerText = scrambleStr;
-        if (ui.twistyPlayer) {
-            ui.twistyPlayer.alg = scrambleStr;
-        }
-    } catch (err) {
-        console.error("Lỗi tạo scramble:", err);
-        // Fallback chuỗi scramble mặc định nếu mất mạng
-        ui.scrambleText.innerText = "D1 F2 U L2 R2 U' B2 U' R2 B2 R2 B' L' R' U' B F' L R2 U'";
-    }
+// Callback khi bị ngắt kết nối (chủ động hoặc ngoài ý muốn)
+function handleDisconnectUI() {
+    isConnectedState = false;
+    ui.connectBtn.innerText = '🔌 Connect Cube';
+    ui.connectBtn.classList.remove('secondary');
+    ui.connectBtn.classList.add('primary');
+    ui.calibrateBtn.disabled = true;
 }
 
-// 2. Vòng lặp cập nhật Timer UI
-function updateTimerUI() {
-    if (tracker.isSolving) {
-        const now = performance.now();
-        const timeElapsed = ((now - tracker.startTime) / 1000).toFixed(3);
-        ui.timerDisplay.innerText = timeElapsed;
-        
-        const stats = tracker.getStats();
-        ui.stats.tps.innerText = stats.tps;
-        ui.stats.turns.innerText = stats.turns;
-        ui.stats.fluency.innerText = stats.fluency;
-        
-        requestAnimationFrame(updateTimerUI);
-    }
-}
-
-// 3. Xử lý tín hiệu xoay từ Rubik
 function handleCubeMove(move) {
     if (ui.twistyPlayer && ui.twistyPlayer.experimentalAddMove) {
         ui.twistyPlayer.experimentalAddMove(move);
@@ -83,21 +57,56 @@ function handleCubeMove(move) {
     }
 }
 
-// 4. Khởi tạo kết nối Bluetooth
-const cubeBluetooth = new SmartCubeBluetooth(handleCubeMove);
+async function generateScramble() {
+    try {
+        ui.scrambleText.innerText = "Generating scramble...";
+        const scramble = await randomScrambleForEvent("333");
+        const scrambleStr = scramble.toString();
+        ui.scrambleText.innerText = scrambleStr;
+        if (ui.twistyPlayer) ui.twistyPlayer.alg = scrambleStr;
+    } catch (err) {
+        ui.scrambleText.innerText = "D1 F2 U L2 R2 U' B2 U' R2 B2 R2 B' L' R' U' B F' L R2 U'";
+    }
+}
 
+function updateTimerUI() {
+    if (tracker.isSolving) {
+        const now = performance.now();
+        const timeElapsed = ((now - tracker.startTime) / 1000).toFixed(3);
+        ui.timerDisplay.innerText = timeElapsed;
+        
+        const stats = tracker.getStats();
+        ui.stats.tps.innerText = stats.tps;
+        ui.stats.turns.innerText = stats.turns;
+        ui.stats.fluency.innerText = stats.fluency;
+        
+        requestAnimationFrame(updateTimerUI);
+    }
+}
+
+// Khởi tạo Bluetooth class với 2 callback: onMove và onDisconnect
+const cubeBluetooth = new SmartCubeBluetooth(handleCubeMove, handleDisconnectUI);
+
+// Xử lý sự kiện click toggle Connect / Disconnect
 ui.connectBtn.addEventListener('click', async () => {
-    ui.connectBtn.innerText = 'Đang kết nối...';
-    const isConnected = await cubeBluetooth.connect();
-    if (isConnected) {
-        ui.connectBtn.innerText = '✅ Đã kết nối Cube';
-        ui.connectBtn.classList.remove('primary');
-        ui.connectBtn.classList.add('secondary');
-        ui.calibrateBtn.disabled = false;
+    if (isConnectedState) {
+        // Nếu đang kết nối -> Ngắt kết nối
+        cubeBluetooth.disconnect();
+        handleDisconnectUI();
     } else {
-        ui.connectBtn.innerText = '🔌 Connect Cube';
+        // Nếu chưa kết nối -> Kết nối
+        ui.connectBtn.innerText = 'Đang kết nối...';
+        const connected = await cubeBluetooth.connect();
+        if (connected) {
+            isConnectedState = true;
+            ui.connectBtn.innerText = '🚫 Disconnect Cube';
+            ui.connectBtn.classList.remove('primary');
+            ui.connectBtn.classList.add('secondary');
+            ui.calibrateBtn.disabled = false;
+        } else {
+            handleDisconnectUI();
+        }
     }
 });
 
-// Chạy lần đầu
 generateScramble();
