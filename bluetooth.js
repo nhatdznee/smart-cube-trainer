@@ -1,3 +1,4 @@
+// bluetooth.js
 export class SmartCubeBluetooth {
     constructor(onMoveCallback, onDisconnectCallback) {
         this.device = null;
@@ -38,7 +39,7 @@ export class SmartCubeBluetooth {
         try {
             this.disconnect();
 
-            // 1. Bật cửa sổ chọn thiết bị Bluetooth
+            // 1. Mở popup quét thiết bị GAN
             this.device = await navigator.bluetooth.requestDevice({
                 filters: [
                     { namePrefix: 'GAN' },
@@ -57,15 +58,34 @@ export class SmartCubeBluetooth {
                 this.disconnect();
             });
 
-            console.log(`Đang kết nối GATT với: ${this.device.name}`);
-            this.server = await this.device.gatt.connect();
+            console.log(`Đang kết nối GATT tới: ${this.device.name}`);
+            
+            // 2. Thử kết nối GATT (Retry 3 lần nếu bị rớt luồng)
+            let retries = 3;
+            while (retries > 0) {
+                try {
+                    this.server = await this.device.gatt.connect();
+                    await new Promise(r => setTimeout(r, 600)); // Chờ 600ms cho GATT ổn định
+                    if (this.server && this.server.connected) {
+                        break;
+                    }
+                } catch (err) {
+                    console.warn(`Lần kết nối thử ${4 - retries} thất bại, đang thử lại...`);
+                    retries--;
+                    if (retries === 0) throw err;
+                    await new Promise(r => setTimeout(r, 500));
+                }
+            }
 
-            await new Promise(r => setTimeout(r, 300));
+            // Kiểm tra chắc chắn GATT Server vẫn hoạt động
+            if (!this.server || !this.server.connected) {
+                throw new Error('Kết nối Bluetooth bị ngắt giữa chừng. Hãy xoay vài vòng Rubik để đánh thức rồi bấm kết nối lại!');
+            }
 
-            // 2. Lấy Primary Service fff0
+            // 3. Lấy Primary Service fff0
             const service = await this.server.getPrimaryService(this.SERVICE_UUID);
 
-            // 3. Lấy Characteristics
+            // 4. Lấy Characteristics
             this.notifyCharacteristic = await service.getCharacteristic(this.NOTIFY_UUID);
             try {
                 this.writeCharacteristic = await service.getCharacteristic(this.WRITE_UUID);
@@ -73,17 +93,17 @@ export class SmartCubeBluetooth {
                 console.warn('Không tìm thấy kênh Write fff2, tiếp tục chế độ Read.');
             }
 
-            // 4. Kích hoạt Notifications
+            // 5. Kích hoạt nhận dữ liệu real-time
             await this.notifyCharacteristic.startNotifications();
             this.notifyCharacteristic.addEventListener('characteristicvaluechanged', this.handleData.bind(this));
 
-            // 5. Gửi lệnh Handshake ping tránh ngắt kết nối
+            // 6. Gửi gói Handshake ping duy trì kết nối
             if (this.writeCharacteristic) {
                 const handshakePacket = new Uint8Array([0x68, 0x01, 0x00, 0x00, 0x00, 0x00]);
                 await this.writeCharacteristic.writeValue(handshakePacket);
             }
 
-            console.log('✅ Kết nối Bluetooth thành công!');
+            console.log('✅ Đã kết nối GAN iCarry thành công!');
             return true;
 
         } catch (error) {
@@ -97,14 +117,11 @@ export class SmartCubeBluetooth {
     }
 
     disconnect() {
-        const wasConnected = !!(this.device && this.device.gatt && this.device.gatt.connected);
-        if (wasConnected) {
+        if (this.device && this.device.gatt && this.device.gatt.connected) {
             try {
                 this.device.gatt.disconnect();
             } catch (e) {}
-            console.log('Đã ngắt kết nối Bluetooth.');
         }
-
         this.device = null;
         this.server = null;
         this.notifyCharacteristic = null;
