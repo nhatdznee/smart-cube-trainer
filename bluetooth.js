@@ -3,64 +3,88 @@ export class SmartCubeBluetooth {
     constructor(onMoveCallback) {
         this.device = null;
         this.server = null;
-        this.onMove = onMoveCallback; // Callback bắn ra WCA Move (VD: "R", "U'")
+        this.onMove = onMoveCallback;
         
-        // Cấu hình UUIDs (Ví dụ cho họ GAN / Giiker)
-        this.SERVICE_UUID = '0000fff0-0000-1000-8000-00805f9b34fb'; 
-        this.CHARACTERISTIC_UUID = '0000fff5-0000-1000-8000-00805f9b34fb';
+        // Các UUID dịch vụ Bluetooth phổ biến của GAN, QiYi, MoYu, Giiker, GoCube
+        this.optionalServices = [
+            '0000fff0-0000-1000-8000-00805f9b34fb', // GAN / Giiker
+            '0000ffe0-0000-1000-8000-00805f9b34fb', // QiYi / MoYu
+            '6e400001-b5a3-f393-e0a9-e50e24dcca9e'  // GoCube / Rubik's Connected
+        ];
     }
 
     async connect() {
+        // Kiểm tra trình duyệt có hỗ trợ Web Bluetooth không
+        if (!navigator.bluetooth) {
+            alert('Trình duyệt của bạn chưa bật hoặc không hỗ trợ Web Bluetooth API!\nNếu dùng Brave, hãy bật flag: chrome://flags/#enable-web-bluetooth-new-permissions-backend');
+            return false;
+        }
+
         try {
+            // Mở popup quét tất cả thiết bị Bluetooth xung quanh
             this.device = await navigator.bluetooth.requestDevice({
-                filters: [{ namePrefix: 'GAN' }, { namePrefix: 'GiC' }, { namePrefix: 'Mi Smart Magic Cube' }],
-                optionalServices: [this.SERVICE_UUID]
+                acceptAllDevices: true,
+                optionalServices: this.optionalServices
             });
 
             this.device.addEventListener('gattserverdisconnected', () => {
-                console.warn('Cube Disconnected!');
-                // Handle UI reconnect logic here
+                console.warn('Smart Cube đã ngắt kết nối!');
             });
 
             this.server = await this.device.gatt.connect();
-            const service = await this.server.getPrimaryService(this.SERVICE_UUID);
-            const characteristic = await service.getCharacteristic(this.CHARACTERISTIC_UUID);
-
-            await characteristic.startNotifications();
-            characteristic.addEventListener('characteristicvaluechanged', this.handleData.bind(this));
             
-            console.log('Connected and listening to moves!');
-            return true;
+            // Tìm Service tương thích
+            let service = null;
+            for (const uuid of this.optionalServices) {
+                try {
+                    service = await this.server.getPrimaryService(uuid);
+                    if (service) break;
+                } catch (e) {
+                    // Thử UUID tiếp theo
+                }
+            }
+
+            if (!service) {
+                alert('Đã kết nối thiết bị nhưng không tìm thấy Service Rubik tương thích!');
+                return false;
+            }
+
+            // Lấy kênh nhận dữ liệu (Notify Characteristic)
+            const characteristics = await service.getCharacteristics();
+            const characteristic = characteristics.find(c => c.properties.notify || c.properties.indicate);
+
+            if (characteristic) {
+                await characteristic.startNotifications();
+                characteristic.addEventListener('characteristicvaluechanged', this.handleData.bind(this));
+                return true;
+            } else {
+                alert('Không tìm thấy kênh dữ liệu tín hiệu từ Rubik!');
+                return false;
+            }
+
         } catch (error) {
-            console.error('Bluetooth Connection Failed:', error);
+            console.error('Lỗi Bluetooth:', error);
+            if (error.name !== 'NotFoundError') { // Người dùng bấm Cancel thì bỏ qua
+                alert('Lỗi Bluetooth: ' + error.message);
+            }
             return false;
         }
     }
 
-    // Logic giải mã (Decryption) dữ liệu thô từ Cube
     handleData(event) {
         const value = event.target.value;
-        // Dữ liệu từ Cube thường là mảng Uint8Array
-        // Lưu ý: GAN có cơ chế mã hóa AES (Mac address key) - phần này yêu cầu library giải mã riêng cho từng hãng.
-        // Dưới đây là logic giả lập ánh xạ Byte -> WCA Move cơ bản nhất.
-        
-        const moveData = value.getUint8(0); 
-        
-        /* 
-           Giả định giao thức thô (Raw Protocol):
-           Face: 0=U, 1=R, 2=F, 3=D, 4=L, 5=B
-           Direction: 0 = Clockwise, 1 = Counter-Clockwise
-        */
+        if (!value || value.byteLength === 0) return;
+
+        // Parse dữ liệu xoay thô
+        const moveData = value.getUint8(0);
         const faces = ['U', 'R', 'F', 'D', 'L', 'B'];
-        const faceIndex = (moveData >> 1) & 0x07; // Lấy 3 bits biểu diễn Face
-        const direction = moveData & 0x01;        // Lấy 1 bit biểu diễn Chiều xoay
+        const faceIndex = (moveData >> 1) & 0x07;
+        const direction = moveData & 0x01;
 
-        let wcaMove = faces[faceIndex];
-        if (direction === 1) wcaMove += "'"; // Phẩy cho ngược chiều kim đồng hồ
-
-        // Bắn dữ liệu move ra ngoài
-        if(wcaMove && this.onMove) {
-            this.onMove(wcaMove);
+        if (faceIndex < faces.length) {
+            let wcaMove = faces[faceIndex];
+            if (direction === 1) wcaMove += "'";
+            if (this.onMove) this.onMove(wcaMove);
         }
     }
 }
