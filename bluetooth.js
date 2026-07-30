@@ -15,9 +15,6 @@ export class SmartCubeBluetooth {
         this.SERVICE_UUID = '0000fff0-0000-1000-8000-00805f9b34fb';
         this.NOTIFY_UUID  = '0000fff5-0000-1000-8000-00805f9b34fb';
         this.WRITE_UUID   = '0000fff2-0000-1000-8000-00805f9b34fb';
-
-        window.addEventListener('beforeunload', () => this.disconnect());
-        window.addEventListener('pagehide', () => this.disconnect());
     }
 
     deriveGanKey(mac) {
@@ -37,8 +34,6 @@ export class SmartCubeBluetooth {
         }
 
         try {
-            this.disconnect();
-
             // 1. Mở popup quét thiết bị GAN
             this.device = await navigator.bluetooth.requestDevice({
                 filters: [
@@ -53,33 +48,27 @@ export class SmartCubeBluetooth {
                 ]
             });
 
-            this.device.addEventListener('gattserverdisconnected', () => {
-                console.warn('GAN Cube đã ngắt kết nối!');
-                this.disconnect();
-            });
-
             console.log(`Đang kết nối GATT tới: ${this.device.name}`);
-            
-            // 2. Thử kết nối GATT (Retry 3 lần nếu bị rớt luồng)
+
+            // 2. Thử kết nối GATT (Thử lại 3 lần nếu có độ trễ)
             let retries = 3;
             while (retries > 0) {
                 try {
                     this.server = await this.device.gatt.connect();
-                    await new Promise(r => setTimeout(r, 600)); // Chờ 600ms cho GATT ổn định
+                    await new Promise(r => setTimeout(r, 600));
                     if (this.server && this.server.connected) {
                         break;
                     }
                 } catch (err) {
-                    console.warn(`Lần kết nối thử ${4 - retries} thất bại, đang thử lại...`);
+                    console.warn(`Thử kết nối lần ${4 - retries} chưa thành công, đang thử lại...`);
                     retries--;
                     if (retries === 0) throw err;
                     await new Promise(r => setTimeout(r, 500));
                 }
             }
 
-            // Kiểm tra chắc chắn GATT Server vẫn hoạt động
             if (!this.server || !this.server.connected) {
-                throw new Error('Kết nối Bluetooth bị ngắt giữa chừng. Hãy xoay vài vòng Rubik để đánh thức rồi bấm kết nối lại!');
+                throw new Error('Không thể kết nối GATT Server. Hãy bấm kết nối lại!');
             }
 
             // 3. Lấy Primary Service fff0
@@ -97,7 +86,7 @@ export class SmartCubeBluetooth {
             await this.notifyCharacteristic.startNotifications();
             this.notifyCharacteristic.addEventListener('characteristicvaluechanged', this.handleData.bind(this));
 
-            // 6. Gửi gói Handshake ping duy trì kết nối
+            // 6. Gửi gói Handshake ping
             if (this.writeCharacteristic) {
                 const handshakePacket = new Uint8Array([0x68, 0x01, 0x00, 0x00, 0x00, 0x00]);
                 await this.writeCharacteristic.writeValue(handshakePacket);
@@ -108,7 +97,7 @@ export class SmartCubeBluetooth {
 
         } catch (error) {
             console.error('Lỗi Bluetooth:', error);
-            this.disconnect();
+            // ĐÃ XÓA LỆNH TỰ ĐỘNG NGẮT KẾT NỐI (this.disconnect()) Ở ĐÂY
             if (error.name !== 'NotFoundError') {
                 alert(`Lỗi kết nối Bluetooth: ${error.message}`);
             }
@@ -116,6 +105,7 @@ export class SmartCubeBluetooth {
         }
     }
 
+    // Hàm duy nhất thực hiện ngắt kết nối (chỉ chạy khi người dùng chủ động bấm Disconnect)
     disconnect() {
         if (this.device && this.device.gatt && this.device.gatt.connected) {
             try {
