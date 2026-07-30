@@ -41,68 +41,67 @@ export class SmartCubeBluetooth {
                     '0000fff0-0000-1000-8000-00805f9b34fb',
                     '0000aaaa-0000-1000-8000-00805f9b34fb',
                     '0000ffe0-0000-1000-8000-00805f9b34fb',
-                    '6e400001-b5a3-f393-e0a9-e50e24dcca9e',
-                    0xfff0,
-                    0xaaaa,
-                    0xffe0
+                    '6e400001-b5a3-f393-e0a9-e50e24dcca9e'
                 ]
             });
 
             console.log(`2. Đã ghép nối với: ${this.device.name}. Đang kết nối GATT...`);
             this.server = await this.device.gatt.connect();
 
-            await new Promise(r => setTimeout(r, 500));
+            await new Promise(r => setTimeout(r, 600));
 
             if (!this.server || !this.server.connected) {
                 throw new Error('GATT Server ngắt kết nối đột ngột!');
             }
 
-            console.log('3. Đang tự động dò tìm danh sách Primary Services...');
+            console.log('3. Đang quét danh sách Primary Services...');
             const services = await this.server.getPrimaryServices();
-            console.log('📋 Danh sách Services tìm thấy trên GAN:', services.map(s => s.uuid));
+            console.log('📋 Tất cả Services tìm thấy:', services.map(s => s.uuid));
 
-            if (services.length === 0) {
-                throw new Error('Không tìm thấy Service nào trên khối GAN!');
+            // BỎ QUA các Service mặc định của hệ thống Bluetooth (1800, 1801)
+            const validServices = services.filter(s => 
+                !s.uuid.includes('00001800') && !s.uuid.includes('00001801')
+            );
+
+            if (validServices.length === 0) {
+                throw new Error('Không tìm thấy Service dữ liệu nào trên khối GAN!');
             }
 
-            // Tự động chọn service phù hợp (ưu tiên fff0, aaaa, ffe0)
-            const service = services.find(s => 
+            // Chọn Service dữ liệu chuẩn của GAN
+            const service = validServices.find(s => 
                 s.uuid.includes('fff0') || 
                 s.uuid.includes('aaaa') || 
-                s.uuid.includes('ffe0')
-            ) || services[0];
+                s.uuid.includes('6e400001')
+            ) || validServices[0];
 
-            console.log(`🎯 Đã chọn Service: ${service.uuid}`);
+            console.log(`🎯 Đã chọn Service dữ liệu chính xác: ${service.uuid}`);
 
-            // Lấy danh sách Characteristics trong Service
             const characteristics = await service.getCharacteristics();
             console.log('📋 Danh sách Characteristics:', characteristics.map(c => c.uuid));
 
-            // Tự động tìm Notify & Write characteristic
+            // Ưu tiên chọn Characteristic có tính năng notify và chứa mã fff5
             this.notifyCharacteristic = characteristics.find(c => 
-                c.uuid.includes('fff5') || c.properties.notify
-            ) || characteristics[0];
+                (c.uuid.includes('fff5') || c.uuid.includes('6e400003')) && c.properties.notify
+            ) || characteristics.find(c => c.properties.notify);
 
             this.writeCharacteristic = characteristics.find(c => 
                 c.uuid.includes('fff2') || c.properties.write || c.properties.writeWithoutResponse
             );
 
             if (!this.notifyCharacteristic) {
-                throw new Error('Không tìm thấy kênh Notify trên khối GAN!');
+                throw new Error('Không tìm thấy kênh Notify truyền dữ liệu xoay!');
             }
 
             console.log('4. Kích hoạt Notifications kênh:', this.notifyCharacteristic.uuid);
             await this.notifyCharacteristic.startNotifications();
             this.notifyCharacteristic.addEventListener('characteristicvaluechanged', this.handleData.bind(this));
 
-            // 5. Gửi gói Handshake ping duy trì kết nối
+            // 5. Gửi gói Handshake ping
             if (this.writeCharacteristic) {
                 try {
                     const handshakePacket = new Uint8Array([0x68, 0x01, 0x00, 0x00, 0x00, 0x00]);
                     if (typeof this.writeCharacteristic.writeValueWithoutResponse === 'function') {
                         await this.writeCharacteristic.writeValueWithoutResponse(handshakePacket);
-                    } else if (typeof this.writeCharacteristic.writeValueWithResponse === 'function') {
-                        await this.writeCharacteristic.writeValueWithResponse(handshakePacket);
                     } else if (typeof this.writeCharacteristic.writeValue === 'function') {
                         await this.writeCharacteristic.writeValue(handshakePacket);
                     }
