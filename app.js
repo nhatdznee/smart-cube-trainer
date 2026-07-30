@@ -7,6 +7,14 @@ window.addEventListener('DOMContentLoaded', () => {
 
     const cube3D = new Cube3D();
 
+    // Tìm nút bấm hỗ trợ cả 2 ID 'btn-connect' và 'connectBtn'
+    const connectBtn = document.getElementById('btn-connect') || document.getElementById('connectBtn');
+
+    if (!connectBtn) {
+        console.error('❌ Không tìm thấy nút Connect trong index.html! Hãy kiểm tra thẻ <button>');
+        return;
+    }
+
     function handleRealtimeMove(move) {
         console.log('Realtime move:', move);
         if (cube3D && typeof cube3D.applyMove === 'function') {
@@ -19,7 +27,6 @@ window.addEventListener('DOMContentLoaded', () => {
         if (cube3D && typeof cube3D.resetToSolved === 'function') {
             cube3D.resetToSolved();
         }
-        const connectBtn = document.getElementById('connectBtn');
         if (connectBtn) {
             connectBtn.textContent = '🔌 Connect Cube';
             connectBtn.classList.remove('connected');
@@ -27,12 +34,6 @@ window.addEventListener('DOMContentLoaded', () => {
     }
 
     const bluetooth = new SmartCubeBluetooth(handleRealtimeMove, handleDisconnect);
-    const connectBtn = document.getElementById('connectBtn');
-
-    if (!connectBtn) {
-        console.error('Không tìm thấy nút id="connectBtn" trong index.html!');
-        return;
-    }
 
     connectBtn.addEventListener('click', async () => {
         console.log('Bấm nút Connect Cube...');
