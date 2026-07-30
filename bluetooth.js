@@ -1,4 +1,3 @@
-\// bluetooth.js
 export class SmartCubeBluetooth {
     constructor(onMoveCallback, onDisconnectCallback) {
         this.device = null;
@@ -8,13 +7,13 @@ export class SmartCubeBluetooth {
         this.onMove = onMoveCallback;
         this.onDisconnect = onDisconnectCallback;
 
-        // Địa chỉ MAC khối GAN iCarry của bạn
+        // Địa chỉ MAC khối GAN iCarry
         this.macAddress = '0C:3D:5E:99:23:29';
         this.ganKey = this.deriveGanKey(this.macAddress);
 
         this.SERVICE_UUID = '0000fff0-0000-1000-8000-00805f9b34fb';
         this.NOTIFY_UUID  = '0000fff5-0000-1000-8000-00805f9b34fb';
-        this.WRITE_UUID   = '0000fff2-0000-1000-8000-00805f9b34fb'; // Kênh giữ kết nối
+        this.WRITE_UUID   = '0000fff2-0000-1000-8000-00805f9b34fb';
 
         window.addEventListener('beforeunload', () => this.disconnect());
         window.addEventListener('pagehide', () => this.disconnect());
@@ -39,7 +38,7 @@ export class SmartCubeBluetooth {
         try {
             this.disconnect();
 
-            // 1. Quét thiết bị GAN
+            // 1. Bật cửa sổ chọn thiết bị Bluetooth
             this.device = await navigator.bluetooth.requestDevice({
                 filters: [
                     { namePrefix: 'GAN' },
@@ -63,31 +62,28 @@ export class SmartCubeBluetooth {
 
             await new Promise(r => setTimeout(r, 300));
 
-            // 2. Lấy Service fff0
+            // 2. Lấy Primary Service fff0
             const service = await this.server.getPrimaryService(this.SERVICE_UUID);
 
-            // 3. Lấy Notify Characteristic (fff5) & Write Characteristic (fff2)
+            // 3. Lấy Characteristics
             this.notifyCharacteristic = await service.getCharacteristic(this.NOTIFY_UUID);
-            
             try {
                 this.writeCharacteristic = await service.getCharacteristic(this.WRITE_UUID);
             } catch (e) {
                 console.warn('Không tìm thấy kênh Write fff2, tiếp tục chế độ Read.');
             }
 
-            // 4. Bật lắng nghe dữ liệu
+            // 4. Kích hoạt Notifications
             await this.notifyCharacteristic.startNotifications();
             this.notifyCharacteristic.addEventListener('characteristicvaluechanged', this.handleData.bind(this));
 
-            // 5. GỬI LỆNH HANDSHAKE ĐỂ TRÁNH GAN TỰ NGẮT KẾT NỐI (WATCHDOG PING)
+            // 5. Gửi lệnh Handshake ping tránh ngắt kết nối
             if (this.writeCharacteristic) {
-                // Lệnh handshake request state chuẩn của GAN
                 const handshakePacket = new Uint8Array([0x68, 0x01, 0x00, 0x00, 0x00, 0x00]);
                 await this.writeCharacteristic.writeValue(handshakePacket);
-                console.log('🤝 Đã gửi Handshake duy trì kết nối tới GAN iCarry!');
             }
 
-            console.log('✅ Kết nối thành công! Dữ liệu xoay đang ở chế độ Real-time.');
+            console.log('✅ Kết nối Bluetooth thành công!');
             return true;
 
         } catch (error) {
@@ -101,17 +97,22 @@ export class SmartCubeBluetooth {
     }
 
     disconnect() {
-        if (this.device && this.device.gatt && this.device.gatt.connected) {
-            this.device.gatt.disconnect();
+        const wasConnected = !!(this.device && this.device.gatt && this.device.gatt.connected);
+        if (wasConnected) {
+            try {
+                this.device.gatt.disconnect();
+            } catch (e) {}
             console.log('Đã ngắt kết nối Bluetooth.');
         }
+
         this.device = null;
         this.server = null;
         this.notifyCharacteristic = null;
         this.writeCharacteristic = null;
 
-        // Gọi callback để đưa 3D Rubik về trạng thái bình thường ban đầu
-        if (this.onDisconnect) this.onDisconnect();
+        if (this.onDisconnect) {
+            this.onDisconnect();
+        }
     }
 
     handleData(event) {
@@ -121,7 +122,6 @@ export class SmartCubeBluetooth {
         const rawBytes = new Uint8Array(value.buffer);
         const faces = ['U', 'R', 'F', 'D', 'L', 'B'];
 
-        // Đọc bước xoay Real-time từ GAN
         let moveByte = rawBytes[0];
         if (rawBytes.length >= 16) {
             moveByte = rawBytes[12] ^ this.ganKey[0];
@@ -134,7 +134,7 @@ export class SmartCubeBluetooth {
             let wcaMove = faces[faceIndex];
             if (direction === 1) wcaMove += "'";
 
-            console.log(`Real-time Move: ${wcaMove}`);
+            console.log(`Realtime move: ${wcaMove}`);
             if (this.onMove) this.onMove(wcaMove);
         }
     }
