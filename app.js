@@ -28,15 +28,11 @@ function initApp() {
     const calibrateBtn = document.getElementById('calibrateBtn') || document.querySelector('button:nth-of-type(2)');
     const hintsEl = document.querySelector('.hints') || document.getElementById('hints') || document.querySelector('h3');
 
-    // Cập nhật Scramble lên giao diện
-    function updateScramble() {
-        const newScramble = generateWCAScramble();
-        const scrambleDisplay = document.querySelector('h1, h2, header, .scramble') || document.body;
-        
-        // Tìm phần tử hiển thị scramble trên header
-        const headerText = document.querySelector('header') || document.body.firstElementChild;
-        if (headerText) {
-            headerText.innerHTML = `<h2>${newScramble}</h2>`;
+    // Hàm cập nhật Scramble (Chỉ thay đổi nội dung chữ, KHÔNG ghi đè header làm mất nút)
+    function setScrambleText(text) {
+        let scrambleDisplay = document.getElementById('scramble-text') || document.querySelector('.scramble') || document.querySelector('h2');
+        if (scrambleDisplay) {
+            scrambleDisplay.textContent = text;
         }
     }
 
@@ -48,7 +44,7 @@ function initApp() {
         }
     }
 
-    // 2. Xử lý khi Chưa kết nối / Ngắt kết nối
+    // 2. Xử lý khi CHƯA KẾT NỐI / NGẮT KẾT NỐI
     function handleDisconnect() {
         console.log('Trạng thái: Chưa kết nối Rubik');
         if (cube3D) {
@@ -61,9 +57,11 @@ function initApp() {
         if (hintsEl) {
             hintsEl.textContent = 'Kết nối Rubik và làm Cross...';
         }
+        // Thông báo chưa kết nối thay vì hiện Scramble
+        setScrambleText('🔌 Bấm Connect Cube để nhận Scramble');
     }
 
-    // 3. Xử lý khi Kết nối thành công
+    // 3. Xử lý khi KẾT NỐI THÀNH CÔNG
     function handleConnectSuccess() {
         console.log('Trạng thái: ✅ Đã kết nối Rubik!');
         if (connectBtn) {
@@ -73,13 +71,13 @@ function initApp() {
         if (hintsEl) {
             hintsEl.textContent = '✅ Đã kết nối! Hãy xoay Rubik theo Scramble.';
         }
-        // Tự động đổi Scramble mới khi kết nối
-        updateScramble();
+        // Chỉ sinh Scramble mới sau khi ĐÃ KẾT NỐI thành công
+        setScrambleText(generateWCAScramble());
     }
 
     const bluetooth = new SmartCubeBluetooth(handleRealtimeMove, handleDisconnect);
 
-    // Nút Connect / Disconnect
+    // Sự kiện Nút Connect / Disconnect
     if (connectBtn) {
         connectBtn.addEventListener('click', async () => {
             if (bluetooth.device && bluetooth.device.gatt && bluetooth.device.gatt.connected) {
@@ -96,18 +94,17 @@ function initApp() {
         });
     }
 
-    // NÚT MỚI: Reset / Calibrate 3D Cube khi xoay bị lệch
+    // Sự kiện Nút Reset / Calibrate 3D Cube
     if (calibrateBtn) {
         calibrateBtn.addEventListener('click', () => {
-            console.log('🔄 Đang Calibrate / Reset mô hình 3D về ban đầu...');
+            console.log('🔄 Reset mô hình 3D về ban đầu...');
             if (cube3D) {
                 cube3D.resetToSolved();
             }
         });
     }
 
-    // Sinh Scramble ban đầu khi mở Web
-    updateScramble();
+    // Mặc định khi mới mở web
     handleDisconnect();
 }
 
