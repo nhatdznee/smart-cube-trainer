@@ -5,23 +5,25 @@ export class SmartCubeBluetooth {
         this.server = null;
         this.onMove = onMoveCallback;
         
-        // Các UUID dịch vụ Bluetooth phổ biến của GAN, QiYi, MoYu, Giiker, GoCube
+        // Danh sách mở rộng Service UUIDs của các dòng Smart Cube
         this.optionalServices = [
-            '0000fff0-0000-1000-8000-00805f9b34fb', // GAN / Giiker
-            '0000ffe0-0000-1000-8000-00805f9b34fb', // QiYi / MoYu
-            '6e400001-b5a3-f393-e0a9-e50e24dcca9e'  // GoCube / Rubik's Connected
+            '0000fff0-0000-1000-8000-00805f9b34fb', // GAN Gen 1 / Giiker
+            '0000ffe0-0000-1000-8000-00805f9b34fb', // QiYi / MoYu / MG356
+            '6e400001-b5a3-f393-e0a9-e50e24dcca9e', // GoCube / Rubik's Connected
+            '0000aaaa-0000-1000-8000-00805f9b34fb', // GAN i / i2 / i3 / i Carry / 12 ui
+            '0000aab0-0000-1000-8000-00805f9b34fb', // QiYi Smart Cube v2
+            '0000180a-0000-1000-8000-00805f9b34fb', // Device Info Standard
+            '0000180f-0000-1000-8000-00805f9b34fb'  // Battery Service
         ];
     }
 
     async connect() {
-        // Kiểm tra trình duyệt có hỗ trợ Web Bluetooth không
         if (!navigator.bluetooth) {
-            alert('Trình duyệt của bạn chưa bật hoặc không hỗ trợ Web Bluetooth API!\nNếu dùng Brave, hãy bật flag: chrome://flags/#enable-web-bluetooth-new-permissions-backend');
+            alert('Trình duyệt không hỗ trợ Web Bluetooth API!');
             return false;
         }
 
         try {
-            // Mở popup quét tất cả thiết bị Bluetooth xung quanh
             this.device = await navigator.bluetooth.requestDevice({
                 acceptAllDevices: true,
                 optionalServices: this.optionalServices
@@ -32,39 +34,58 @@ export class SmartCubeBluetooth {
             });
 
             this.server = await this.device.gatt.connect();
-            
-            // Tìm Service tương thích
-            let service = null;
-            for (const uuid of this.optionalServices) {
-                try {
-                    service = await this.server.getPrimaryService(uuid);
-                    if (service) break;
-                } catch (e) {
-                    // Thử UUID tiếp theo
+
+            let targetCharacteristic = null;
+
+            // Cách 1: Thử tự động lấy TẤT CẢ Primary Services từ thiết bị
+            try {
+                const services = await this.server.getPrimaryServices();
+                for (const service of services) {
+                    try {
+                        const characteristics = await service.getCharacteristics();
+                        const found = characteristics.find(c => c.properties.notify || c.properties.indicate);
+                        if (found) {
+                            targetCharacteristic = found;
+                            break;
+                        }
+                    } catch (err) {
+                        continue;
+                    }
+                }
+            } catch (e) {
+                console.log("Không thể quét tự động toàn bộ services, chuyển sang danh sách fallback...");
+            }
+
+            // Cách 2: Fallback quét theo mảng optionalServices nếu Cách 1 bị trình duyệt chặn
+            if (!targetCharacteristic) {
+                for (const uuid of this.optionalServices) {
+                    try {
+                        const service = await this.server.getPrimaryService(uuid);
+                        const characteristics = await service.getCharacteristics();
+                        const found = characteristics.find(c => c.properties.notify || c.properties.indicate);
+                        if (found) {
+                            targetCharacteristic = found;
+                            break;
+                        }
+                    } catch (e) {
+                        // Tiếp tục thử UUID khác
+                    }
                 }
             }
 
-            if (!service) {
-                alert('Đã kết nối thiết bị nhưng không tìm thấy Service Rubik tương thích!');
+            if (!targetCharacteristic) {
+                alert('Đã kết nối nhưng không tìm thấy kênh dữ liệu tương thích!\nHãy kiểm tra lại mẫu Rubik bạn đang sử dụng.');
                 return false;
             }
 
-            // Lấy kênh nhận dữ liệu (Notify Characteristic)
-            const characteristics = await service.getCharacteristics();
-            const characteristic = characteristics.find(c => c.properties.notify || c.properties.indicate);
-
-            if (characteristic) {
-                await characteristic.startNotifications();
-                characteristic.addEventListener('characteristicvaluechanged', this.handleData.bind(this));
-                return true;
-            } else {
-                alert('Không tìm thấy kênh dữ liệu tín hiệu từ Rubik!');
-                return false;
-            }
+            // Đăng ký nhận tín hiệu real-time
+            await targetCharacteristic.startNotifications();
+            targetCharacteristic.addEventListener('characteristicvaluechanged', this.handleData.bind(this));
+            return true;
 
         } catch (error) {
             console.error('Lỗi Bluetooth:', error);
-            if (error.name !== 'NotFoundError') { // Người dùng bấm Cancel thì bỏ qua
+            if (error.name !== 'NotFoundError') {
                 alert('Lỗi Bluetooth: ' + error.message);
             }
             return false;
@@ -75,7 +96,6 @@ export class SmartCubeBluetooth {
         const value = event.target.value;
         if (!value || value.byteLength === 0) return;
 
-        // Parse dữ liệu xoay thô
         const moveData = value.getUint8(0);
         const faces = ['U', 'R', 'F', 'D', 'L', 'B'];
         const faceIndex = (moveData >> 1) & 0x07;
