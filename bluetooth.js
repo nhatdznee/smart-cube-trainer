@@ -11,10 +11,6 @@ export class SmartCubeBluetooth {
         // Địa chỉ MAC khối GAN iCarry
         this.macAddress = '0C:3D:5E:99:23:29';
         this.ganKey = this.deriveGanKey(this.macAddress);
-
-        this.SERVICE_UUID = '0000fff0-0000-1000-8000-00805f9b34fb';
-        this.NOTIFY_UUID  = '0000fff5-0000-1000-8000-00805f9b34fb';
-        this.WRITE_UUID   = '0000fff2-0000-1000-8000-00805f9b34fb';
     }
 
     deriveGanKey(mac) {
@@ -42,9 +38,13 @@ export class SmartCubeBluetooth {
                     { namePrefix: 'AiCube' }
                 ],
                 optionalServices: [
-                    this.SERVICE_UUID,
+                    '0000fff0-0000-1000-8000-00805f9b34fb',
                     '0000aaaa-0000-1000-8000-00805f9b34fb',
-                    '0000ffe0-0000-1000-8000-00805f9b34fb'
+                    '0000ffe0-0000-1000-8000-00805f9b34fb',
+                    '6e400001-b5a3-f393-e0a9-e50e24dcca9e',
+                    0xfff0,
+                    0xaaaa,
+                    0xffe0
                 ]
             });
 
@@ -57,24 +57,45 @@ export class SmartCubeBluetooth {
                 throw new Error('GATT Server ngắt kết nối đột ngột!');
             }
 
-            console.log('3. Lấy Primary Service fff0...');
-            const service = await this.server.getPrimaryService(this.SERVICE_UUID);
+            console.log('3. Đang tự động dò tìm danh sách Primary Services...');
+            const services = await this.server.getPrimaryServices();
+            console.log('📋 Danh sách Services tìm thấy trên GAN:', services.map(s => s.uuid));
 
-            console.log('4. Lấy Notify Characteristic fff5...');
-            this.notifyCharacteristic = await service.getCharacteristic(this.NOTIFY_UUID);
-
-            try {
-                this.writeCharacteristic = await service.getCharacteristic(this.WRITE_UUID);
-                console.log('Đã tìm thấy kênh Write fff2');
-            } catch (e) {
-                console.warn('Không tìm thấy kênh Write fff2, tiếp tục chế độ Read.');
+            if (services.length === 0) {
+                throw new Error('Không tìm thấy Service nào trên khối GAN!');
             }
 
-            console.log('5. Kích hoạt Notifications...');
+            // Tự động chọn service phù hợp (ưu tiên fff0, aaaa, ffe0)
+            const service = services.find(s => 
+                s.uuid.includes('fff0') || 
+                s.uuid.includes('aaaa') || 
+                s.uuid.includes('ffe0')
+            ) || services[0];
+
+            console.log(`🎯 Đã chọn Service: ${service.uuid}`);
+
+            // Lấy danh sách Characteristics trong Service
+            const characteristics = await service.getCharacteristics();
+            console.log('📋 Danh sách Characteristics:', characteristics.map(c => c.uuid));
+
+            // Tự động tìm Notify & Write characteristic
+            this.notifyCharacteristic = characteristics.find(c => 
+                c.uuid.includes('fff5') || c.properties.notify
+            ) || characteristics[0];
+
+            this.writeCharacteristic = characteristics.find(c => 
+                c.uuid.includes('fff2') || c.properties.write || c.properties.writeWithoutResponse
+            );
+
+            if (!this.notifyCharacteristic) {
+                throw new Error('Không tìm thấy kênh Notify trên khối GAN!');
+            }
+
+            console.log('4. Kích hoạt Notifications kênh:', this.notifyCharacteristic.uuid);
             await this.notifyCharacteristic.startNotifications();
             this.notifyCharacteristic.addEventListener('characteristicvaluechanged', this.handleData.bind(this));
 
-            // 6. Gửi gói Handshake (bọc an toàn không gây ngắt kết nối nếu lỗi ghi)
+            // 5. Gửi gói Handshake ping duy trì kết nối
             if (this.writeCharacteristic) {
                 try {
                     const handshakePacket = new Uint8Array([0x68, 0x01, 0x00, 0x00, 0x00, 0x00]);
@@ -87,7 +108,7 @@ export class SmartCubeBluetooth {
                     }
                     console.log('🤝 Handshake thành công!');
                 } catch (writeErr) {
-                    console.warn('Cảnh báo Lỗi Write Handshake (không ảnh hưởng luồng chính):', writeErr);
+                    console.warn('Cảnh báo Lỗi Write Handshake:', writeErr);
                 }
             }
 
