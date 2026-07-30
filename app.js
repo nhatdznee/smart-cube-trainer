@@ -1,8 +1,9 @@
 // app.js
 import { SmartCubeBluetooth } from './bluetooth.js';
 import { CubeTracker } from './cubeLogic.js';
-import { randomScrambleForEvent } from 'https://cdn.cubing.net/js/cubing/scramble'; // WCA Official Scrambler
-import { Kpuzzle } from 'https://cdn.cubing.net/js/cubing/kpuzzle';
+
+// Sử dụng gói ESM CDN ổn định cho Scrambler
+import { randomScrambleForEvent } from 'https://cdn.jsdelivr.net/npm/cubing@0.27.0/scramble/+esm';
 
 const ui = {
     connectBtn: document.getElementById('btn-connect'),
@@ -24,28 +25,31 @@ const ui = {
 };
 
 let tracker = new CubeTracker();
-let currentScramble = "";
-let timerInterval;
 
-// 1. Tạo chuỗi Scramble chuẩn WCA
+// 1. Tạo chuỗi Scramble WCA
 async function generateScramble() {
-    // Tạo scramble 3x3 chuẩn WCA (~20-22 moves)
-    const scramble = await randomScrambleForEvent("333");
-    currentScramble = scramble.toString();
-    ui.scrambleText.innerText = currentScramble;
-    
-    // Áp dụng scramble vào mô hình 3D
-    ui.twistyPlayer.alg = currentScramble;
+    try {
+        ui.scrambleText.innerText = "Generating scramble...";
+        const scramble = await randomScrambleForEvent("333");
+        const scrambleStr = scramble.toString();
+        ui.scrambleText.innerText = scrambleStr;
+        if (ui.twistyPlayer) {
+            ui.twistyPlayer.alg = scrambleStr;
+        }
+    } catch (err) {
+        console.error("Lỗi tạo scramble:", err);
+        // Fallback chuỗi scramble mặc định nếu mất mạng
+        ui.scrambleText.innerText = "D1 F2 U L2 R2 U' B2 U' R2 B2 R2 B' L' R' U' B F' L R2 U'";
+    }
 }
 
-// 2. Vòng lặp Timer UI
+// 2. Vòng lặp cập nhật Timer UI
 function updateTimerUI() {
     if (tracker.isSolving) {
         const now = performance.now();
         const timeElapsed = ((now - tracker.startTime) / 1000).toFixed(3);
         ui.timerDisplay.innerText = timeElapsed;
         
-        // Cập nhật thống kê real-time
         const stats = tracker.getStats();
         ui.stats.tps.innerText = stats.tps;
         ui.stats.turns.innerText = stats.turns;
@@ -55,35 +59,31 @@ function updateTimerUI() {
     }
 }
 
-// 3. Xử lý khi nhận nước đi từ Smart Cube
+// 3. Xử lý tín hiệu xoay từ Rubik
 function handleCubeMove(move) {
-    // A. Áp dụng chuyển động vào mô hình 3D (Đồng bộ Real-time)
-    ui.twistyPlayer.experimentalAddMove(move);
+    if (ui.twistyPlayer && ui.twistyPlayer.experimentalAddMove) {
+        ui.twistyPlayer.experimentalAddMove(move);
+    }
 
-    // B. Đưa vào Tracker để tính toán Timer & Split CFOP
-    const currentState = ui.twistyPlayer.experimentalCurrentState(); // Lấy trạng thái hiện tại
+    const currentState = ui.twistyPlayer ? ui.twistyPlayer.experimentalCurrentState() : null;
     tracker.registerMove(move, currentState);
 
-    // C. Cập nhật UI nếu mới bắt đầu giải
     if (tracker.moves === 1) {
         requestAnimationFrame(updateTimerUI);
     }
 
-    // D. Cập nhật Split Time lên màn hình
     ui.splits.cross.innerText = tracker.splits.cross > 0 ? tracker.splits.cross + 's' : '--';
     ui.splits.f2l.innerText = tracker.splits.f2l > 0 ? tracker.splits.f2l + 's' : '--';
     ui.splits.oll.innerText = tracker.splits.oll > 0 ? tracker.splits.oll + 's' : '--';
     ui.splits.pll.innerText = tracker.splits.pll > 0 ? tracker.splits.pll + 's' : '--';
 
-    // E. Nếu giải xong
     if (tracker.phase === 'SOLVED') {
         ui.timerDisplay.innerText = tracker.getFinalTime();
-        ui.timerDisplay.style.color = 'var(--success)';
-        generateScramble(); // Chuẩn bị ván mới
+        generateScramble();
     }
 }
 
-// 4. Khởi tạo Bluetooth & Sự kiện nút bấm
+// 4. Khởi tạo kết nối Bluetooth
 const cubeBluetooth = new SmartCubeBluetooth(handleCubeMove);
 
 ui.connectBtn.addEventListener('click', async () => {
@@ -95,7 +95,7 @@ ui.connectBtn.addEventListener('click', async () => {
         ui.connectBtn.classList.add('secondary');
         ui.calibrateBtn.disabled = false;
     } else {
-        ui.connectBtn.innerText = '❌ Lỗi kết nối. Thử lại';
+        ui.connectBtn.innerText = '🔌 Connect Cube';
     }
 });
 
