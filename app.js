@@ -1,4 +1,3 @@
-// app.js
 import { SmartCubeBluetooth } from './bluetooth.js';
 import { Cube3D } from './cubeLogic.js';
 
@@ -8,15 +7,15 @@ const cube3D = new Cube3D();
 // Xử lý khi nhận nước xoay Real-time từ Rubik thật
 function handleRealtimeMove(move) {
     console.log('Realtime move:', move);
-    if (cube3D.applyMove) {
+    if (cube3D && typeof cube3D.applyMove === 'function') {
         cube3D.applyMove(move);
     }
 }
 
 // Xử lý khi Ngắt kết nối hoặc chưa kết nối
 function handleDisconnect() {
-    console.log('Disconnected -> Reset Rubik 3D về trạng thái ban đầu');
-    if (cube3D.resetToSolved) {
+    console.log('Disconnected -> Reset Rubik 3D');
+    if (cube3D && typeof cube3D.resetToSolved === 'function') {
         cube3D.resetToSolved();
     }
     
@@ -49,5 +48,5 @@ if (connectBtn) {
     });
 }
 
-// Đảm bảo ban đầu 3D Rubik luôn ở trạng thái bình thường
+// Đảm bảo trạng thái ban đầu khi chưa kết nối
 handleDisconnect();
