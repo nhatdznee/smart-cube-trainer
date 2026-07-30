@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SmartCube Pro Training</title>
+    <link rel="stylesheet" href="styles.css">
+    <!-- Sử dụng thư viện cubing.js cho mô hình 3D và logic khối -->
+    <script type="module" src="https://cdn.cubing.net/js/cubing/twisty"></script>
+</head>
+<body>
+    <header class="header">
+        <div class="scramble-container">
+            <h2 id="scramble-text">Loading scramble...</h2>
+        </div>
+        <button id="btn-connect" class="btn primary">🔌 Connect Cube</button>
+        <button id="btn-calibrate" class="btn secondary" disabled>🎯 Calibrate (WCA Orientation)</button>
+    </header>
+
+    <main class="main-container">
+        <!-- Sidebar Trái: Thống kê & CFOP Splits -->
+        <aside class="sidebar left-sidebar">
+            <h3>📊 Statistics</h3>
+            <div class="stats-box">
+                <p><strong>TPS:</strong> <span id="tps-val">0.00</span></p>
+                <p><strong>Turns:</strong> <span id="turns-val">0</span></p>
+                <p><strong>Fluency:</strong> <span id="fluency-val">100</span>%</p>
+            </div>
+            
+            <h3>⏱️ CFOP Splits</h3>
+            <ul class="splits-list">
+                <li id="split-cross">Cross: <span>--</span></li>
+                <li id="split-f2l">F2L: <span>--</span></li>
+                <li id="split-oll">OLL: <span>--</span></li>
+                <li id="split-pll">PLL: <span>--</span></li>
+            </ul>
+        </aside>
+
+        <!-- Trung tâm: 3D Model & Timer -->
+        <section class="center-view">
+            <div class="cube-container">
+                <twisty-player id="cube-3d" visualization="3D" background="none" control-panel="none"></twisty-player>
+            </div>
+            <div class="timer-display" id="timer">0.000</div>
+        </section>
+
+        <!-- Sidebar Phải: Gợi ý giải & Lịch sử -->
+        <aside class="sidebar right-sidebar">
+            <h3>💡 Real-time Hints</h3>
+            <div class="hints-box" id="hints-box">
+                <p>Kết nối Rubik và làm Cross...</p>
+            </div>
+
+            <h3>🕒 History (ao5)</h3>
+            <ul class="history-list" id="history-list">
+                <!-- Lịch sử đổ vào đây -->
+            </ul>
+        </aside>
+    </main>
+
+    <script type="module" src="app.js"></script>
+</body>
+</html>
