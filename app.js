@@ -1,24 +1,24 @@
 import { SmartCubeBluetooth } from './bluetooth.js';
 import { Cube3D } from './cubeLogic.js';
 
-// Khởi tạo mô hình Rubik 3D
+// Khởi tạo 3D Rubik
 const cube3D = new Cube3D();
 
-// Xử lý khi nhận nước xoay Real-time từ Rubik thật
+// Xử lý khi có bước xoay Real-time từ khối Rubik thật
 function handleRealtimeMove(move) {
-    console.log('Realtime move:', move);
+    console.log('Xoay real-time:', move);
     if (cube3D && typeof cube3D.applyMove === 'function') {
         cube3D.applyMove(move);
     }
 }
 
-// Xử lý khi Ngắt kết nối hoặc chưa kết nối
+// Xử lý khi ngắt kết nối hoặc chưa kết nối
 function handleDisconnect() {
-    console.log('Disconnected -> Reset Rubik 3D');
+    console.log('Trạng thái: Chưa/Ngắt kết nối -> Reset Rubik 3D về mặc định');
     if (cube3D && typeof cube3D.resetToSolved === 'function') {
         cube3D.resetToSolved();
     }
-    
+
     const connectBtn = document.getElementById('connectBtn');
     if (connectBtn) {
         connectBtn.textContent = '🔌 Connect Cube';
@@ -26,10 +26,10 @@ function handleDisconnect() {
     }
 }
 
-// Khai báo kết nối Bluetooth
+// Khởi tạo đối tượng Bluetooth
 const bluetooth = new SmartCubeBluetooth(handleRealtimeMove, handleDisconnect);
 
-// Sự kiện bấm nút Connect / Disconnect
+// Gán sự kiện cho nút Connect / Disconnect
 const connectBtn = document.getElementById('connectBtn');
 if (connectBtn) {
     connectBtn.addEventListener('click', async () => {
@@ -48,5 +48,5 @@ if (connectBtn) {
     });
 }
 
-// Đảm bảo trạng thái ban đầu khi chưa kết nối
+// Trạng thái ban đầu khi chưa bấm kết nối
 handleDisconnect();
